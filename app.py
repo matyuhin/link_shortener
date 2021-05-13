@@ -117,9 +117,9 @@ def update_list(user_id):
 #     return '', 204
 #
 #
-# @app.teardown_appcontext
-# def shutdown_session(exception=None):
-#     session.remove()
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    session.remove()
 
 
 host = '10.170.1.120'
