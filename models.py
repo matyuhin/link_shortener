@@ -49,3 +49,9 @@ class Link(Base):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     type_id = db.Column(db.Integer, db.ForeignKey('link_type.id'))
     counter = db.Column(db.Integer, nullable=True)
+    
+    
+    @classmethod
+    def get_original_link(cls, id):
+        original_link = cls.query.filter(cls.id == id).one()
+        return original_link
