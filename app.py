@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, redirect
 import sqlalchemy as db
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy import create_engine
@@ -120,6 +120,17 @@ def update_list(user_id):
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     session.remove()
+    
+    
+@app.route('/<short_uri>')
+def url_redirect(short_uri):
+    original_id = hashids.decode(short_uri)
+    print(original_id)
+    if original_id:
+        link = Link.get_original_link(original_id[0])
+        original_link = link.original
+        return redirect(original_link)
+    return "Не судьба"
 
 
 host = '10.170.1.120'
