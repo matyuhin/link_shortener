@@ -7,6 +7,8 @@ from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 import pymysql
 from config import Config
 from hashids import Hashids
+from flask_cors import CORS
+
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -25,6 +27,12 @@ Base.query = session.query_property()
 
 jwt = JWTManager(app)
 
+
+cors = CORS(app,resources={
+    r"/*": {"origins": Config.CORS_ALLOWED_ORIGINS}
+})
+
+
 salt = "это типа соль, бла бла бла"
 hashids = Hashids(min_length=12, salt=salt)
 user_id_hash = Hashids(min_length=8, salt=salt)
@@ -33,15 +41,18 @@ user_id_hash = Hashids(min_length=8, salt=salt)
 from models import *
 
 # Создаем таблицы в БД
-# Base.metadata.create_all(bind=engine)
+# Раскоментируй строчку ниже, если нужно первоначальное создание таблиц
+# Base.metadata.create_all(bind=engine) 
 
 @app.route('/register', methods=['POST'])
 def register():
+    print('sdasd')
     params = request.json
     user = User(**params)
     session.add(user)
     session.commit()
     token = user.get_token()
+    print('qqq',user.name)
     return {'access_token': token}
 
 
@@ -50,78 +61,82 @@ def login():
     params = request.json
     user = User.authenticate(**params)
     token = user.get_token()
-    user_id = user_id_hash.encode(user.id)
+    # user_id = user_id_hash.encode(user.id)
+    user_id = user.id
     return {'access_token': token, 'user_id': user_id}
 
 
-
-@app.route('/<user_id>/links', methods=['GET'])
+@app.route('/', methods=['POST'])
 @jwt_required()
-def get_list(user_id):
-    user_id = user_id_hash.decode(user_id)
-    links = Link.query.filter(Link.user_id == user_id[0])
+def add_link():
+    user_id = get_jwt_identity()
+    new_one = Link(**request.json)
+    new_one.user_id = user_id
+    session.add(new_one)
+    session.commit()
+    if new_one.friendly_link:
+        friendly = new_one.friendly_link
+    else:
+        friendly = ""
+    serialized = {
+        'original': new_one.original,
+        'type_id': new_one.type_id,
+        'friendly': friendly,
+        'counter': 0,
+        "user_id": user_id
+    }
+    return jsonify(serialized)
+
+
+
+@app.route('/links', methods=['GET'])
+@jwt_required()
+def get_list():
+    user_id = get_jwt_identity()
+    links = Link.query.filter(Link.user_id == user_id)
     serialized = []
     for link in links:
+        if link.friendly_link:
+            friendly_link = f"{api_url}/{link.friendly_link}"
+        else:
+            friendly_link = ''
         serialized.append({
             'id': link.id,
             'original': link.original,
+            'friendly': friendly_link,
             'short': f"{api_url}/{hashids.encode(link.id)}"
         })
     return jsonify(serialized)
 
 
-@app.route('/<user_id>/links', methods=['POST'])
+@app.route('/links/<int:link_id>', methods=['PUT'])
 @jwt_required()
-def update_list(user_id):
-    user_id = user_id_hash.decode(user_id)
-    print("ID Пользователя при добавлении ссылки", user_id[0])
-    new_one = Link(**request.json)
-    new_one.user_id = user_id
-    session.add(new_one)
+def update_link(link_id):
+    user_id = get_jwt_identity()
+    item = Link.query.filter(Link.id == link_id, Link.user_id == user_id).first()
+    params = request.json
+    if not item:
+        return {'message': 'Нет ссылок с таким id'}, 400
+    for key, value in params.items():
+        setattr(item, key, value)
     session.commit()
     serialized = {
-        'original': new_one.original,
-        'user_id': user_id[0],
-        'type_id': new_one.type_id,
-        'counter': 0
-
+        'type_id': item.type_id,
+        'friendly': item.friendly_link
     }
-    return jsonify(serialized)
+    return serialized
 
+@app.route('/links/<int:link_id>', methods=['DELETE'])
+@jwt_required()
+def delete_link(link_id):
+    user_id = get_jwt_identity()
+    item = Link.query.filter(Link.id == link_id, Link.user_id == user_id).first()
+    if not item:
+        return {'message': 'Нет ссылок с таким id'}, 400
+    session.delete(item)
+    session.commit()
+    return '', 204
 
-# @app.route('/<int:user_id>/links', methods=['PUT'])
-# @jwt_required
-# def update_tutorial(link_id):
-#     user_id = get_jwt_identity()
-#     item = Link.query.filter(Link.id == link_id).first()
-#     params = request.json
-#     if not item:
-#         return {'message': 'Нет ссылок с таким id'}, 400
-#     for key, value in params.items():
-#         setattr(item, key, value)
-#     session.commit()
-#     serialized = {
-#         'type_id': item.type_id
-#     }
-#     return serialized
-#
-#
-# @app.route('/links/<int:link_id>', methods=['DELETE'])
-# @jwt_required
-# def delete_tutorial(link_id):
-#     item = Link.query.filter(Link.id == link_id).first()
-#     if not item:
-#         return {'message': 'Нет ссылок с таким id'}, 400
-#     session.delete(item)
-#     session.commit()
-#     return '', 204
-#
-#
-@app.teardown_appcontext
-def shutdown_session(exception=None):
-    session.remove()
-    
-    
 @app.route('/<short_uri>')
 def url_redirect(short_uri):
     original_id = hashids.decode(short_uri)
@@ -133,8 +148,13 @@ def url_redirect(short_uri):
     return "Не судьба"
 
 
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    session.remove()
+
+
 host = '10.170.1.120'
-port = 8080
+port = 5000
 api_url = f"http://{host}:{port}"
 if __name__ == '__main__':
     app.run(host=host, port=port)
