@@ -104,7 +104,8 @@ def get_list():
             'id': link.id,
             'original': link.original,
             'friendly': friendly_link,
-            'short': f"{api_url}/{hashids.encode(link.id)}"
+            'short': f"{api_url}/{hashids.encode(link.id)}",
+            'counter': link.counter,
         })
     return jsonify(serialized)
 
@@ -139,11 +140,12 @@ def delete_link(link_id):
 
 @app.route('/<short_uri>')
 def url_redirect(short_uri):
-    original_id = hashids.decode(short_uri)
-    print(original_id)
-    if original_id:
-        link = Link.get_original_link(original_id[0])
+    link_id = hashids.decode(short_uri)
+    if link_id:
+        link = Link.get_original_link(link_id[0])
+        link.counter += 1
         original_link = link.original
+        session.commit()
         return redirect(original_link)
     return "Не судьба"
 
