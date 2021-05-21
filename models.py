@@ -2,7 +2,7 @@ from app import db, session, Base
 from sqlalchemy.orm import relationship
 from flask_jwt_extended import create_access_token
 from datetime import timedelta
-from passlib.hash import pbkdf2_sha256, md5_crypt
+from passlib.hash import pbkdf2_sha256
 
 
 
@@ -52,6 +52,11 @@ class Link(Base):
     
     
     @classmethod
-    def get_original_link(cls, id):
-        original_link = cls.query.filter(cls.id == id).one()
-        return original_link
+    def get_original_link(cls, arg, type_query):
+        link = ()
+        if type_query == "id":
+            link = cls.query.filter(cls.id == arg).one()
+        else:
+            if cls.query.filter(cls.friendly_link == arg).count():
+                link = cls.query.filter(cls.friendly_link == arg).one()
+        return link
