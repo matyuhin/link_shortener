@@ -8,15 +8,14 @@ import pymysql
 from config import Config
 from hashids import Hashids
 from flask_cors import CORS
-
+from models import *
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
 client = app.test_client()
 
-# engine = create_engine('mysql+pymysql://user:123456@localhost/orm_test')
-engine = create_engine('mysql+pymysql://root@localhost/orm_test')
+engine = create_engine(f'mysql+pymysql://{Config.db_user}:{Config.db_pass}@{Config.db_host}/{Config.db_name}')
 
 session = scoped_session(sessionmaker(
     autocommit=False, autoflush=False, bind=engine))
@@ -24,25 +23,20 @@ session = scoped_session(sessionmaker(
 Base = declarative_base()
 Base.query = session.query_property()
 
-
 jwt = JWTManager(app)
 
-
-cors = CORS(app,resources={
+cors = CORS(app, resources={
     r"/*": {"origins": Config.CORS_ALLOWED_ORIGINS}
 })
 
-
-salt = "это типа соль, бла бла бла"
-hashids = Hashids(min_length=12, salt=salt)
-user_id_hash = Hashids(min_length=8, salt=salt)
+hashids = Hashids(min_length=12, salt=Config.salt)
 
 
-from models import *
+
 
 # Создаем таблицы в БД
 # Раскоментируй строчку ниже, если нужно первоначальное создание таблиц
-# Base.metadata.create_all(bind=engine) 
+# Base.metadata.create_all(bind=engine)
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -52,7 +46,7 @@ def register():
     session.add(user)
     session.commit()
     token = user.get_token()
-    print('qqq',user.name)
+    print('qqq', user.name)
     return {'access_token': token}
 
 
@@ -61,7 +55,6 @@ def login():
     params = request.json
     user = User.authenticate(**params)
     token = user.get_token()
-    # user_id = user_id_hash.encode(user.id)
     user_id = user.id
     return {'access_token': token, 'user_id': user_id}
 
@@ -88,7 +81,6 @@ def add_link():
     return jsonify(serialized)
 
 
-
 @app.route('/links', methods=['GET'])
 @jwt_required()
 def get_list():
@@ -97,14 +89,14 @@ def get_list():
     serialized = []
     for link in links:
         if link.friendly_link:
-            friendly_link = f"{api_url}/{link.friendly_link}"
+            friendly_link = f"{Config.api_url}/{link.friendly_link}"
         else:
             friendly_link = ''
         serialized.append({
             'id': link.id,
             'original': link.original,
             'friendly': friendly_link,
-            'short': f"{api_url}/{hashids.encode(link.id)}",
+            'short': f"{Config.api_url}/{hashids.encode(link.id)}",
             'counter': link.counter,
         })
     return jsonify(serialized)
@@ -127,6 +119,7 @@ def update_link(link_id):
     }
     return serialized
 
+
 @app.route('/links/<int:link_id>', methods=['DELETE'])
 @jwt_required()
 def delete_link(link_id):
@@ -138,16 +131,22 @@ def delete_link(link_id):
     session.commit()
     return '', 204
 
+
 @app.route('/<short_uri>')
 def url_redirect(short_uri):
     link_id = hashids.decode(short_uri)
     if link_id:
-        link = Link.get_original_link(link_id[0])
+        type_query = "id"
+        link = Link.get_original_link(*link_id, type_query)
+    else:
+        type_query = "fl"
+        link = Link.get_original_link(short_uri, type_query)
+    if link:
         link.counter += 1
         original_link = link.original
         session.commit()
         return redirect(original_link)
-    return "Не судьба"
+    return {'message': 'Ссылка недействительна'}, 400
 
 
 @app.teardown_appcontext
@@ -155,8 +154,5 @@ def shutdown_session(exception=None):
     session.remove()
 
 
-host = '10.170.1.120'
-port = 5000
-api_url = f"http://{host}:{port}"
 if __name__ == '__main__':
-    app.run(host=host, port=port)
+    app.run(host=Config.api_host, port=Config.api_port)
