@@ -142,11 +142,37 @@ def url_redirect(short_uri):
         type_query = "fl"
         link = Link.get_original_link(short_uri, type_query)
     if link:
-        link.counter += 1
+        print(link)
         original_link = link.original
-        session.commit()
-        return redirect(original_link)
+        if link.type_id == 1:
+            link.counter += 1
+            session.commit()
+            return redirect(original_link)
+        elif link.type_id == 2:
+            if check_autentificate():
+                link.counter += 1
+                session.commit()
+                return redirect(original_link)
+        else:
+            if check_private_link(link.user_id):
+                link.counter += 1
+                session.commit()
+                return redirect(original_link)
+            else:
+                return {'message': 'Недостаточно прав'}, 400
     return {'message': 'Ссылка недействительна'}, 400
+
+
+@jwt_required()
+def check_autentificate():
+    return get_jwt_identity()
+
+
+@jwt_required()
+def check_private_link(link_user_id):
+    user_id = get_jwt_identity()
+    if user_id == link_user_id:
+        return True
 
 
 @app.teardown_appcontext
