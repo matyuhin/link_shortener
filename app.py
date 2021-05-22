@@ -8,7 +8,7 @@ import pymysql
 from config import Config
 from hashids import Hashids
 from flask_cors import CORS
-from models import *
+
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -22,6 +22,10 @@ session = scoped_session(sessionmaker(
 
 Base = declarative_base()
 Base.query = session.query_property()
+
+
+from models import *
+
 
 jwt = JWTManager(app)
 
