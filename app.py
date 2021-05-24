@@ -63,12 +63,13 @@ def login():
     return {'access_token': token, 'user_id': user_id}
 
 
-@app.route('/', methods=['POST'])
+@app.route('/add-link', methods=['POST'])
 @jwt_required()
 def add_link():
     user_id = get_jwt_identity()
     new_one = Link(**request.json)
     new_one.user_id = user_id
+    new_one.counter = 0
     session.add(new_one)
     session.commit()
     if new_one.friendly_link:
@@ -79,7 +80,7 @@ def add_link():
         'original': new_one.original,
         'type_id': new_one.type_id,
         'friendly': friendly,
-        'counter': 0,
+        'counter': new_one.counter,
         "user_id": user_id
     }
     return jsonify(serialized)
