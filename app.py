@@ -39,7 +39,7 @@ cors = CORS(app, resources={
 
 # Создаем таблицы в БД
 # Раскоментируй строчку ниже, если нужно первоначальное создание таблиц
-# Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine, checkfirst=True)
 
 @app.route('/register', methods=['POST'])
 def register():
