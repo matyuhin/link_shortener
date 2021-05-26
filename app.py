@@ -77,7 +77,7 @@ def add_link():
     user_id = get_jwt_identity()
     response_data = request.json
     original_link = add_original_link(response_data["original"])
-    exist = Link.query.filter(Link.id == original_link.id).first()
+    exist = Link.query.filter(Link.original_id == original_link.id).first()
     if not exist:
         response_data.pop("original")
         response_data["original_id"] = original_link.id
