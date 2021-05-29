@@ -9,7 +9,7 @@ from config import Config
 from flask_cors import CORS
 import hashlib
 import base64
-
+import re
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -41,6 +41,17 @@ cors = CORS(app, resources={
 # Раскоментируй строчку ниже, если нужно первоначальное создание таблиц
 Base.metadata.create_all(bind=engine, checkfirst=True)
 
+
+def validate_url(url):
+    regex = re.compile(
+            r'^(?:http|ftp)s?://' # http:// or https://
+            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' #domain...
+            r'localhost|' #localhost...
+            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
+            r'(?::\d+)?' # optional port
+            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+    return re.match(regex, url) is not None
+
 @app.route('/register', methods=['POST'])
 def register():
     params = request.json
@@ -53,12 +64,19 @@ def register():
     return {"message": "Не заполнены необходимые поля"}, 400
 
 
+@app.route('/test', methods=['POST'])
+def test():
+    return {"message": "Не заполнены необходимые поля"}
+
+
 @app.route('/login', methods=['POST'])
 def login():
     params = request.json
     user = User.authenticate(**params)
-    token = user.get_token()
-    return {'access_token': token, 'name': user.name}
+    if user:
+        token = user.get_token()
+        return {'access_token': token, 'name': user.name, "message": ""}
+    return {"message": "Неверное имя пользователя или пароль"}, 400
 
 
 def add_original_link(original_link):
@@ -76,32 +94,34 @@ def add_original_link(original_link):
 def add_link():
     user_id = get_jwt_identity()
     response_data = request.json
-    print(response_data)
-    original_link = add_original_link(response_data["original"])
-    exist = Link.query.filter(Link.original_id == original_link.id).first()
-    if not exist:
-        response_data.pop("original")
-        response_data["original_id"] = original_link.id
-        new_one = Link(**response_data)
-        new_one.user_id = user_id
-
-        new_one.short_link = base64.urlsafe_b64encode(hashlib.md5(original_link.link.encode("UTF-8")).digest()).decode()[:12]
-
-        new_one.counter = 0
-        session.add(new_one)
-        session.commit()
-        serialized = {
-            'original': original_link.link,
-            'short_link': f"{Config.api_url}/{new_one.short_link}",
-            'type_id': new_one.type_id,
-            'counter': new_one.counter,
-            "user_id": user_id
-        }
-        if new_one.friendly_link:
-            serialized["friendly"] = new_one.friendly_link
+    if validate_url(response_data["original"]):
+        original_link = add_original_link(response_data["original"])
+        exist = Link.query.filter(Link.original_id == original_link.id).first()
+        if not exist:
+            response_data.pop("original")
+            response_data["original_id"] = original_link.id
+            new_one = Link(**response_data)
+            new_one.user_id = user_id
+            new_one.short_link = base64.urlsafe_b64encode(hashlib.md5(original_link.link.encode("UTF-8")).digest()).decode()[:12]
+            new_one.counter = 0
+            session.add(new_one)
+            session.commit()
+            serialized = {
+                'original': original_link.link,
+                'short_link': f"{Config.api_url}/{new_one.short_link}",
+                'type_id': new_one.type_id,
+                'counter': new_one.counter,
+                "user_id": user_id
+            }
+            if new_one.friendly_link:
+                serialized["friendly"] = new_one.friendly_link
+        else:
+            serialized = {
+                'message': "Запись уже существует"
+            }
     else:
         serialized = {
-            'message': "Запись уже существует"
+            'message': "Некорректный URL"
         }
 
     return jsonify(serialized)
@@ -158,6 +178,12 @@ def get_link(link_id):
         'counter': link.counter,
         'type_id': link.type_id
     }
+    if link.type_id == 1:
+        data["type_id"] = "Публичная"
+    elif link.type_id == 2:
+        data["type_id"] = "Для зарегистрированных пользователей"
+    else:
+        data["type_id"] = "Приватная"
     if link.friendly_link:
         friendly_link = f"{Config.api_url}/{link.friendly_link}"
         data['friendly'] = friendly_link
